@@ -785,8 +785,10 @@ class DataInput:
             # remove data of years that won't be simulated
             df_input = df_input[df_input[temporal_header].isin(self.energy_system.set_time_steps_years)]
             # convert yearly time indices to generic ones
-            year2step = {year: step for year, step in zip(self.energy_system.set_time_steps_years, getattr(self.energy_system, time_steps))}
-            df_input[temporal_header] = df_input[temporal_header].apply(lambda year: year2step[year])
+            #TODO: cleanup and check compatibility
+            #year2step = {year: step for year, step in zip(self.energy_system.set_time_steps_years, getattr(self.energy_system, time_steps))}
+            #df_input[temporal_header] = df_input[temporal_header].apply(lambda year: year2step[year])
+            df_input[temporal_header] = self.energy_system.set_time_steps_yearly
         return df_input
 
     @staticmethod

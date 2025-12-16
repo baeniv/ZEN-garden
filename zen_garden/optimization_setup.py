@@ -23,6 +23,8 @@ from zen_garden.preprocess.time_series_aggregation import TimeSeriesAggregation
 from zen_garden.preprocess.unit_handling import Scaling
 from zen_garden.preprocess.parameter_change_log import parameter_change_log
 
+from zen_garden.model.scenariotree import ScenarioTree
+
 from zen_garden.utils import ScenarioDict, IISConstraintParser, StringUtils
 
 
@@ -36,7 +38,7 @@ class OptimizationSetup(object):
     # dict of element classes, this dict is filled in the __init__ of the package
     dict_element_classes = {}
 
-    def __init__(self, config, scenario_dict: dict, input_data_checks):
+    def     __init__(self, config, scenario_dict: dict, input_data_checks):
         """setup optimization setup of the energy system
 
         :param config: config object used to extract the analysis, system and solver dictionaries
@@ -74,6 +76,12 @@ class OptimizationSetup(object):
         carrier_classes = [element_name for element_name in element_classes if "Carrier" in element_name]
         technology_classes = [element_name for element_name in element_classes if "Technology" in element_name]
         self.element_list = technology_classes + carrier_classes
+
+        # import scenariotree file
+        self.scenariotree = None
+        if self.system.use_scenariotree == True:
+            self.scenariotree = ScenarioTree(self.analysis)
+            self.system.optimized_years = self.scenariotree.number_of_nodes
 
         # step of optimization horizon
         self.step_horizon = 0

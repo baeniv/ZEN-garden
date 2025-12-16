@@ -20,6 +20,8 @@ class EnergySystem:
     """
     Class defining a standard energy system
     """
+    optimization_setup: object
+
     def __init__(self, optimization_setup):
         """ initialization of the energy_system
 
@@ -84,6 +86,13 @@ class EnergySystem:
         self.time_steps.sequence_time_steps_yearly = self.sequence_time_steps_yearly
         # list containing simulated years (needed for convert_real_to_generic_time_indices() in extract_input_data.py)
         self.set_time_steps_years = list(range(self.system.reference_year, self.system.reference_year + self.system.optimized_years * self.system.interval_between_years, self.system.interval_between_years))
+
+        self.set_time_steps_years_probabilities = [None] * len(self.set_time_steps_years)
+        if self.system.use_scenariotree:
+            for i in self.optimization_setup.scenariotree.node_id_lookup:
+                self.set_time_steps_years[i] = self.optimization_setup.scenariotree.node_id_lookup[i].year #TODO: build these two sets directly in the scenariotree init
+                self.set_time_steps_years_probabilities[i] = self.optimization_setup.scenariotree.node_id_lookup[i].probability
+
         # parameters whose time-dependant data should not be interpolated (for years without data) in the extract_input_data.py convert_real_to_generic_time_indices() function
         self.parameters_interpolation_off = self.data_input.read_input_json("parameters_interpolation_off")
         # technology-specific
@@ -432,13 +441,16 @@ class EnergySystemRules(GenericRule):
         for year in self.energy_system.set_time_steps_yearly:
 
             ### auxiliary calculations
-            if year == self.energy_system.set_time_steps_yearly_entire_horizon[-1]:
+            if self.energy_system.set_time_steps_years[year] == self.energy_system.set_time_steps_years[-1]:
                 interval_between_years = 1
             else:
                 interval_between_years = self.system.interval_between_years
             # economic discount
-            factor[year] = sum(((1 / (1 + self.parameters.discount_rate)) ** (self.system.interval_between_years * (year - self.energy_system.set_time_steps_yearly[0]) + _intermediate_time_step))
-                         for _intermediate_time_step in range(0, interval_between_years))
+            factor[year] = sum(((1 / (1 + self.parameters.discount_rate))
+                                ** (self.system.interval_between_years
+                                    * (self.energy_system.set_time_steps_years[year] - self.energy_system.set_time_steps_years[0])
+                                    + _intermediate_time_step))
+                                    for _intermediate_time_step in range(0, interval_between_years))
         term_discounted_cost_total = self.variables["cost_total"] * factor
 
         lhs = self.variables["net_present_cost"] - term_discounted_cost_total
@@ -522,7 +534,7 @@ class EnergySystemRules(GenericRule):
         :math:`\\mu^\\mathrm{o}`: carbon price for annual overshoot
 
         """
-        mask_last_year = [year == self.energy_system.set_time_steps_yearly[-1] for year in self.energy_system.set_time_steps_yearly]
+        mask_last_year = [year == self.energy_system.set_time_steps_years[-1] for year in self.energy_system.set_time_steps_years]
 
         lhs = (self.variables["cost_carbon_emissions_total"]
                    - self.variables["carbon_emissions_annual"] * self.parameters.price_carbon_emissions)
@@ -574,7 +586,17 @@ class EnergySystemRules(GenericRule):
         :param model: optimization model
         :return: net present cost objective function
         """
-        return model.variables["net_present_cost"].sum("set_time_steps_yearly")
+        probabilities = 1
+        if self.system.use_scenariotree:
+            time_step_coordinates = model.variables["net_present_cost"].coords["set_time_steps_yearly"]
+            probabilities = xr.DataArray(
+                self.energy_system.set_time_steps_years_probabilities,
+                coords={"set_time_steps_yearly": time_step_coordinates},
+                dims=["set_time_steps_yearly"],
+                name="probabilities"
+            )
+
+        return (model.variables["net_present_cost"]*probabilities).sum("set_time_steps_yearly")
 
     def objective_total_carbon_emissions(self, model):
         """objective function to minimize total emissions
@@ -587,5 +609,28 @@ class EnergySystemRules(GenericRule):
         :param model: optimization model
         :return: total carbon emissions objective function
         """
-        sets = self.sets
-        return model.variables["carbon_emissions_cumulative"].at[sets["set_time_steps_yearly"][-1]].to_linexpr()
+        probabilities = 1
+
+        if self.system.use_scenariotree:
+            time_step_coords = model.variables["net_present_cost"].coords[
+                "set_time_steps_yearly"
+            ]
+
+            probabilities = xr.DataArray(
+                self.energy_system.set_time_steps_years_probabilities,
+                coords={"set_time_steps_yearly": time_step_coords},
+                dims=["set_time_steps_yearly"],
+                name="probabilities"
+            )
+
+        mask_last_year = xr.DataArray(
+            [
+                year == self.energy_system.set_time_steps_years[-1]
+                for year in self.energy_system.set_time_steps_years
+            ],
+            dims=['set_time_steps_yearly']
+        )
+
+        return (self.variables["carbon_emissions_cumulative"] * probabilities).where(
+            mask_last_year
+        ).sum()
