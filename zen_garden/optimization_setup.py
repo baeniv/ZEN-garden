@@ -79,9 +79,10 @@ class OptimizationSetup(object):
 
         # import scenariotree file
         self.scenariotree = None
+        self.system.temporal_nodes = self.system.optimized_years
         if self.system.use_scenariotree == True:
             self.scenariotree = ScenarioTree(self.analysis)
-            self.system.optimized_years = self.scenariotree.number_of_nodes
+            self.system.temporal_nodes = self.scenariotree.number_of_nodes
 
         # step of optimization horizon
         self.step_horizon = 0

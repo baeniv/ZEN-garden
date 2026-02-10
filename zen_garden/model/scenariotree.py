@@ -5,6 +5,7 @@ reading, holding and processing the scenariotree information for a stochastic mo
 from anytree import AnyNode, PreOrderIter
 import json
 import os
+import pandas as pd
 
 class ScenarioTree:
     """
@@ -69,3 +70,70 @@ class ScenarioTree:
             raise FileNotFoundError(f"scenariotree.json not found in dataset: {analysis.dataset}")
 
         return scenariotree_data
+
+    def get_ancestor_node(self, current_node, steps):
+        """ returns the ancestor node index of the current node
+
+                :param current_node: index of current node
+                :param steps: number of steps to move backwards in the scenariotree
+                :return: node index of ancestor (negative if "older" than root node)
+                """
+
+        n2r_path = self.node_id_lookup[current_node].node2root_path
+        return n2r_path[steps] if steps < len(n2r_path) else len(n2r_path) - (steps + 1)
+
+    def convert_yearly2generic(self, df_input, energy_system):
+        """
+        Converts and extends the year nodes (e.g., 2025, 2030, 2035) to their
+        respective temporal nodes (0, 1, 2, 3, 4, 5) and matches the data.
+
+        :param df_input: Input dataframe with nodes/years/data.
+        :param energy_system: Energy system for timestep data access.
+        :return: Extended and converted dataframe with columns (node, year, 0).
+        """
+        # Create mapping from energy_system lists
+        df_mapping = pd.DataFrame({
+            'time_step': energy_system.set_time_steps_yearly,
+            'calendar_year': energy_system.set_temporal_nodes_years
+        })
+
+        # Creating the scaffold for all unique nodes and all time steps
+        nodes = df_input['node'].unique()
+        scaffold = pd.MultiIndex.from_product(
+            [nodes, df_mapping['time_step']],
+            names=['node', 'time_step']
+        ).to_frame(index=False)
+
+        # Merging scaffold with mapping, then with input data
+        df_extended = (
+            scaffold.merge(df_mapping, on='time_step')
+            .merge(
+                df_input,
+                left_on=['node', 'calendar_year'],
+                right_on=['node', 'year'],
+                how='left'
+            )
+        )
+
+        df_final = (
+            df_extended.drop(columns=['calendar_year', 'year'])
+            .rename(columns={'time_step': 'year'})
+            .sort_values(['node', 'year'])
+            .reset_index(drop=True)
+        )
+
+        return df_final
+
+    def swap_temporal_ID_with_legacy_ID(self, node_ID):
+        """
+        Swaps new temporal ID's with old year related ID's, used in some data inputs (e.g. existing capacities)
+
+        :param node_ID:
+        :return: year in old time_steps_yearly format
+                """
+        return len(self.node_id_lookup[node_ID].node2root_path)-1
+
+    def create_scenario_dict(self):
+        scenario = 0
+        scenario_dict = 0
+        return (scenario, scenario_dict)

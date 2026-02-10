@@ -110,6 +110,7 @@ class DataInput:
         :return df_output: filled output dataframe """
         df_output_copy = copy.deepcopy(df_output)
         df_input = self.convert_real_to_generic_time_indices(df_input, time_steps, file_name, index_name_list)
+        #TODO multiply with node specific factors
 
         assert df_input.columns is not None, f"Input file '{file_name}' has no columns"
         # set index by index_name_list
@@ -784,11 +785,13 @@ class DataInput:
             df_input = df_input.reset_index()
             # remove data of years that won't be simulated
             df_input = df_input[df_input[temporal_header].isin(self.energy_system.set_time_steps_years)]
+
             # convert yearly time indices to generic ones
-            #TODO: cleanup and check compatibility
-            #year2step = {year: step for year, step in zip(self.energy_system.set_time_steps_years, getattr(self.energy_system, time_steps))}
-            #df_input[temporal_header] = df_input[temporal_header].apply(lambda year: year2step[year])
-            df_input[temporal_header] = self.energy_system.set_time_steps_yearly
+            if self.system.use_scenariotree:
+                df_input = self.optimization_setup.scenariotree.convert_yearly2generic(df_input, self.energy_system)
+            else:
+                year2step = {year: step for year, step in zip(self.energy_system.set_time_steps_years, getattr(self.energy_system, time_steps))}
+                df_input[temporal_header] = df_input[temporal_header].apply(lambda year: year2step[year])
         return df_input
 
     @staticmethod

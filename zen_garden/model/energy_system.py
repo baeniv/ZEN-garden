@@ -75,23 +75,30 @@ class EnergySystem:
         self.set_haversine_distances_edges = self.calculate_haversine_distances_from_nodes()
         self.set_technologies = self.system.set_technologies
         # base time steps
-        self.set_base_time_steps = list(range(0, self.system.unaggregated_time_steps_per_year * self.system.optimized_years))
+        self.set_base_time_steps = list(range(0, self.system.unaggregated_time_steps_per_year * self.system.temporal_nodes))
         self.set_base_time_steps_yearly = list(range(0, self.system.unaggregated_time_steps_per_year))
 
         # yearly time steps
-        self.set_time_steps_yearly = list(range(self.system.optimized_years))
+        self.set_time_steps_yearly = list(range(self.system.temporal_nodes))
+        self.set_time_steps_yearly_previous = (list(range(-1, self.system.temporal_nodes-1))) #TODO: can be removed when one time us is replaced with the scenariotree.py function
         self.set_time_steps_yearly_entire_horizon = copy.deepcopy(self.set_time_steps_yearly)
         time_steps_yearly_duration = self.time_steps.calculate_time_step_duration(self.set_time_steps_yearly, self.set_base_time_steps)
         self.sequence_time_steps_yearly = np.concatenate([[time_step] * time_steps_yearly_duration[time_step] for time_step in time_steps_yearly_duration])
         self.time_steps.sequence_time_steps_yearly = self.sequence_time_steps_yearly
         # list containing simulated years (needed for convert_real_to_generic_time_indices() in extract_input_data.py)
         self.set_time_steps_years = list(range(self.system.reference_year, self.system.reference_year + self.system.optimized_years * self.system.interval_between_years, self.system.interval_between_years))
+        self.set_temporal_nodes_years = copy.deepcopy(self.set_time_steps_years)
 
-        self.set_time_steps_years_probabilities = [None] * len(self.set_time_steps_years)
+        self.set_time_steps_yearly_probabilities = [1] * len(self.set_time_steps_yearly)
         if self.system.use_scenariotree:
-            for i in self.optimization_setup.scenariotree.node_id_lookup:
-                self.set_time_steps_years[i] = self.optimization_setup.scenariotree.node_id_lookup[i].year #TODO: build these two sets directly in the scenariotree init
-                self.set_time_steps_years_probabilities[i] = self.optimization_setup.scenariotree.node_id_lookup[i].probability
+            self.set_temporal_nodes_years = [None] * self.system.temporal_nodes
+            node_id_lookup = self.optimization_setup.scenariotree.node_id_lookup
+            for i in node_id_lookup:
+                node = node_id_lookup[i]
+                self.set_temporal_nodes_years[i] = node.year #TODO: maybe build these sets directly in the scenariotree init?
+                self.set_time_steps_yearly_probabilities[i] = node.probability
+                # if parent doesn't exist (root) set -1, else set parent node id
+                self.set_time_steps_yearly_previous[i] = getattr(node.parent, 'node_id', -1)
 
         # parameters whose time-dependant data should not be interpolated (for years without data) in the extract_input_data.py convert_real_to_generic_time_indices() function
         self.parameters_interpolation_off = self.data_input.read_input_json("parameters_interpolation_off")
@@ -371,18 +378,42 @@ class EnergySystemRules(GenericRule):
 
         """
 
-        m = [True if year == self.energy_system.set_time_steps_yearly[0] else False for year in self.energy_system.set_time_steps_yearly]
+        #TODO: this is quite a hack, maybe implement a way to directly achieve this transformation (used to be shift by one) (added function in scenariotree.py)
+        nodes = self.energy_system.set_time_steps_yearly
+        parent_nodes = self.energy_system.set_time_steps_yearly_previous
+        mapping = pd.Series(parent_nodes, index=nodes)
 
-        lhs = (
-                self.variables["carbon_emissions_cumulative"]
-                - self.variables["carbon_emissions_cumulative"].shift(set_time_steps_yearly=1)
-                - self.variables["carbon_emissions_annual"].shift(set_time_steps_yearly=1) * (self.system.interval_between_years - 1)
-                - self.variables["carbon_emissions_annual"]
+        children = mapping[mapping != -1].index
+        parents = mapping[mapping != -1].values
+        root_year = nodes[0]
+
+        lhs_root = (
+                self.variables["carbon_emissions_cumulative"].sel(set_time_steps_yearly=[root_year])
+                - self.variables["carbon_emissions_annual"].sel(set_time_steps_yearly=[root_year])
         )
-        rhs = (xr.ones_like(self.variables["carbon_emissions_cumulative"].mask) * self.parameters.carbon_emissions_cumulative_existing).where(m,0)
-        constraints = lhs == rhs
 
-        self.constraints.add_constraint("constraint_carbon_emissions_cumulative",constraints)
+        prev_cumul = self.variables["carbon_emissions_cumulative"].sel(set_time_steps_yearly=parents)
+        prev_annual = self.variables["carbon_emissions_annual"].sel(set_time_steps_yearly=parents)
+
+        lhs_children = (
+                self.variables["carbon_emissions_cumulative"].sel(set_time_steps_yearly=children)
+                - self.variables["carbon_emissions_annual"].sel(set_time_steps_yearly=children)
+                - prev_cumul.assign_coords(set_time_steps_yearly=children)
+                - prev_annual.assign_coords(set_time_steps_yearly=children) * (self.system.interval_between_years - 1)
+        )
+
+        lhs = lhs_root + lhs_children
+
+        mask_first_year = xr.DataArray(nodes == root_year, coords=[nodes], dims=["set_time_steps_yearly"])
+
+        rhs = xr.where(
+            mask_first_year,
+            self.parameters.carbon_emissions_cumulative_existing,
+            0
+        )
+
+        constraints = lhs == rhs
+        self.constraints.add_constraint("constraint_carbon_emissions_cumulative", constraints)
 
     def constraint_carbon_emissions_annual_limit(self):
         """ time dependent carbon emissions limit from technologies and carriers
@@ -441,14 +472,14 @@ class EnergySystemRules(GenericRule):
         for year in self.energy_system.set_time_steps_yearly:
 
             ### auxiliary calculations
-            if self.energy_system.set_time_steps_years[year] == self.energy_system.set_time_steps_years[-1]:
+            if self.energy_system.set_temporal_nodes_years[year] == self.energy_system.set_temporal_nodes_years[-1]:
                 interval_between_years = 1
             else:
                 interval_between_years = self.system.interval_between_years
             # economic discount
             factor[year] = sum(((1 / (1 + self.parameters.discount_rate))
                                 ** (self.system.interval_between_years
-                                    * (self.energy_system.set_time_steps_years[year] - self.energy_system.set_time_steps_years[0])
+                                    * (self.energy_system.set_temporal_nodes_years[year] - self.energy_system.set_temporal_nodes_years[0])
                                     + _intermediate_time_step))
                                     for _intermediate_time_step in range(0, interval_between_years))
         term_discounted_cost_total = self.variables["cost_total"] * factor
@@ -534,7 +565,7 @@ class EnergySystemRules(GenericRule):
         :math:`\\mu^\\mathrm{o}`: carbon price for annual overshoot
 
         """
-        mask_last_year = [year == self.energy_system.set_time_steps_years[-1] for year in self.energy_system.set_time_steps_years]
+        mask_last_year = [year == self.energy_system.set_time_steps_years[-1] for year in self.energy_system.set_temporal_nodes_years]
 
         lhs = (self.variables["cost_carbon_emissions_total"]
                    - self.variables["carbon_emissions_annual"] * self.parameters.price_carbon_emissions)
@@ -590,7 +621,7 @@ class EnergySystemRules(GenericRule):
         if self.system.use_scenariotree:
             time_step_coordinates = model.variables["net_present_cost"].coords["set_time_steps_yearly"]
             probabilities = xr.DataArray(
-                self.energy_system.set_time_steps_years_probabilities,
+                self.energy_system.set_time_steps_yearly_probabilities,
                 coords={"set_time_steps_yearly": time_step_coordinates},
                 dims=["set_time_steps_yearly"],
                 name="probabilities"
@@ -617,7 +648,7 @@ class EnergySystemRules(GenericRule):
             ]
 
             probabilities = xr.DataArray(
-                self.energy_system.set_time_steps_years_probabilities,
+                self.energy_system.set_time_steps_yearly_probabilities,
                 coords={"set_time_steps_yearly": time_step_coords},
                 dims=["set_time_steps_yearly"],
                 name="probabilities"
@@ -626,7 +657,7 @@ class EnergySystemRules(GenericRule):
         mask_last_year = xr.DataArray(
             [
                 year == self.energy_system.set_time_steps_years[-1]
-                for year in self.energy_system.set_time_steps_years
+                for year in self.energy_system.set_temporal_nodes_years
             ],
             dims=['set_time_steps_yearly']
         )

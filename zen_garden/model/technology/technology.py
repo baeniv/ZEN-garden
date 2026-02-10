@@ -215,7 +215,8 @@ class Technology(Element):
         lifetime = params.lifetime[tech]
         delta_lifetime = lifetime_existing - lifetime
         # reference year of current optimization horizon
-        current_year_horizon = optimization_setup.energy_system.set_time_steps_yearly[0]
+        current_year_horizon = optimization_setup.energy_system.set_time_steps_yearly[0] #TODO: seems like a hack, rethink the temp_nodes etc. structure
+        if system.use_scenariotree: year = optimization_setup.scenariotree.swap_temporal_ID_with_legacy_ID(year)
         if delta_lifetime >= 0:
             cutoff_year = (year-current_year_horizon)*system.interval_between_years
             return cutoff_year >= delta_lifetime
@@ -226,7 +227,7 @@ class Technology(Element):
     @classmethod
     def get_lifetime_range(cls, optimization_setup, tech, year, use_depreciation_time=False):
         """
-        Returns the active year range of a technology based on its lifetime or depreciation time.
+        Returns the active year range list of a technology based on its lifetime or depreciation time.
 
             :param optimization_setup: OptimizationSetup the technology is part of
             :param tech: name of the technology
@@ -238,7 +239,10 @@ class Technology(Element):
 
         first_lifetime_year = cls.get_first_lifetime_time_step(optimization_setup, tech, year, use_depreciation_time=use_depreciation_time)
         first_lifetime_year = max(first_lifetime_year, optimization_setup.sets["set_time_steps_yearly"][0])
-        return range(first_lifetime_year, year + 1)
+        if optimization_setup.system.use_scenariotree:
+            return list(filter(lambda x: x >= first_lifetime_year, optimization_setup.scenariotree.node_id_lookup[year].node2root_path))
+        else:
+            return list(range(first_lifetime_year, year + 1))
 
     @classmethod
     def get_first_lifetime_time_step(cls,optimization_setup,tech,year, use_depreciation_time=False):
@@ -259,7 +263,10 @@ class Technology(Element):
         lifetime = params.depreciation_time[tech] if use_depreciation_time else params.lifetime[tech]
         # conservative estimate of lifetime (floor)
         del_lifetime = int(np.floor(lifetime/system.interval_between_years)) - 1
-        return year - del_lifetime
+        if optimization_setup.system.use_scenariotree:
+            return optimization_setup.scenariotree.get_ancestor_node(year, del_lifetime)
+        else:
+            return year - del_lifetime
 
     @classmethod
     def get_investment_time_step(cls,optimization_setup,tech,year):
@@ -276,7 +283,11 @@ class Technology(Element):
         construction_time = params.construction_time[tech]
         # conservative estimate of construction time (ceil)
         del_construction_time = int(np.ceil(construction_time/system.interval_between_years))
-        return year - del_construction_time
+
+        if optimization_setup.system.use_scenariotree:
+            return optimization_setup.scenariotree.get_ancestor_node(year,del_construction_time)
+        else:
+            return year - del_construction_time
 
     ### --- classmethods to construct sets, parameters, variables, and constraints, that correspond to Technology --- ###
     @classmethod
@@ -775,7 +786,7 @@ class TechnologyRules(GenericRule):
         lt_range = pd.MultiIndex.from_tuples(
             [(t, y, py)
              for t, y in itertools.product(self.sets["set_technologies"], self.sets["set_time_steps_yearly"])
-             for py in list(Technology.get_lifetime_range(self.optimization_setup, t, y))]
+             for py in Technology.get_lifetime_range(self.optimization_setup, t, y)]
             ,names = ["set_technologies", "set_time_steps_yearly", "set_time_steps_yearly_prev"])
         lt_range = pd.Series(index=lt_range, data=-1)
         lt_range = lt_range.to_xarray().broadcast_like(self.variables["capacity"].lower).fillna(0)
@@ -849,13 +860,13 @@ class TechnologyRules(GenericRule):
             [(y, py) for y, py in
              itertools.product(self.sets["set_time_steps_yearly"], self.sets["set_time_steps_yearly"])
              if py < y],
-            names=["set_time_steps_yearly", "set_time_steps_yearly_prev"])
+            names=["set_time_steps_yearly", "set_time_steps_yearly_prev"]) #TODO: this builds a previous year scaffold, implement tree structure
         # only formulate term_knowledge if there are previous years
         term_knowledge_no_spillover = capacity_addition.where(False) # dummy term
         term_knowledge = capacity_addition.where(False) # dummy term
         if len(years) != 0:
             # kdr for capacity additions
-            kdr = {(y, py): (1 - knowledge_depreciation_rate) ** (interval_between_years * (y - 1 - py))
+            kdr = {(y, py): (1 - knowledge_depreciation_rate) ** (interval_between_years * (y - 1 - py)) #TODO: y - previous year (use actual years instead of generic)
                    for y, py in years}
             kdr = pd.Series(kdr)
             kdr.index.names = ["set_time_steps_yearly", "set_time_steps_yearly_prev"]

@@ -146,6 +146,7 @@ class System(Subscriptable):
     aggregated_time_steps_per_year: int = 10
     conduct_time_series_aggregation: bool = False
     optimized_years: int = 1
+    temporal_nodes: int = 1
     interval_between_years: int = 1
     use_rolling_horizon: bool = False
     years_in_rolling_horizon: int = 1
