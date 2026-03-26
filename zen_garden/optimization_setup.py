@@ -83,6 +83,7 @@ class OptimizationSetup(object):
         if self.system.use_scenariotree == True:
             self.scenariotree = ScenarioTree(self.analysis)
             self.system.temporal_nodes = self.scenariotree.number_of_nodes
+            self.scenariotree.add_tree2scenario_dict(self.scenario_dict.dict)
 
         # step of optimization horizon
         self.step_horizon = 0

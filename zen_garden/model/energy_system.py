@@ -80,7 +80,7 @@ class EnergySystem:
 
         # yearly time steps
         self.set_time_steps_yearly = list(range(self.system.temporal_nodes))
-        self.set_time_steps_yearly_previous = (list(range(-1, self.system.temporal_nodes-1))) #TODO: can be removed when one time us is replaced with the scenariotree.py function
+        self.set_time_steps_yearly_previous = (list(range(-1, self.system.temporal_nodes-1))) #TODO: can be removed once uses are replaced with the scenariotree.py method
         self.set_time_steps_yearly_entire_horizon = copy.deepcopy(self.set_time_steps_yearly)
         time_steps_yearly_duration = self.time_steps.calculate_time_step_duration(self.set_time_steps_yearly, self.set_base_time_steps)
         self.sequence_time_steps_yearly = np.concatenate([[time_step] * time_steps_yearly_duration[time_step] for time_step in time_steps_yearly_duration])
@@ -89,13 +89,14 @@ class EnergySystem:
         self.set_time_steps_years = list(range(self.system.reference_year, self.system.reference_year + self.system.optimized_years * self.system.interval_between_years, self.system.interval_between_years))
         self.set_temporal_nodes_years = copy.deepcopy(self.set_time_steps_years)
 
+        # remodel time_steps for scenariotree use
         self.set_time_steps_yearly_probabilities = [1] * len(self.set_time_steps_yearly)
         if self.system.use_scenariotree:
             self.set_temporal_nodes_years = [None] * self.system.temporal_nodes
             node_id_lookup = self.optimization_setup.scenariotree.node_id_lookup
             for i in node_id_lookup:
                 node = node_id_lookup[i]
-                self.set_temporal_nodes_years[i] = node.year #TODO: maybe build these sets directly in the scenariotree init?
+                self.set_temporal_nodes_years[i] = node.year
                 self.set_time_steps_yearly_probabilities[i] = node.probability
                 # if parent doesn't exist (root) set -1, else set parent node id
                 self.set_time_steps_yearly_previous[i] = getattr(node.parent, 'node_id', -1)

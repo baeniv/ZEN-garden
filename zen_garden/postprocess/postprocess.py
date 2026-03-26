@@ -42,6 +42,7 @@ class Postprocess:
         self.optimization_setup = optimization_setup
         self.model = optimization_setup.model
         self.scenarios = scenarios
+        self.scenariotree = getattr(optimization_setup.scenariotree, "scenariotree_data", None)
         self.system = optimization_setup.system
         self.analysis = optimization_setup.analysis
         self.solver = optimization_setup.solver
@@ -85,6 +86,7 @@ class Postprocess:
         self.save_system()
         self.save_analysis()
         self.save_scenarios()
+        self.save_scenariotree()
         self.save_solver()
         self.save_unit_definitions()
         self.save_sequence_time_steps(scenario=scenario_name)
@@ -457,6 +459,14 @@ class Postprocess:
         root_path = Path(self.analysis.folder_output).joinpath(self.model_name)
         fname = root_path.joinpath('scenarios')
         self.write_file(fname, self.scenarios, format="json")
+
+    def save_scenariotree(self):
+        """
+        Saves the scenariotree dict as json
+        """
+        root_path = Path(self.analysis.folder_output).joinpath(self.model_name)
+        fname = root_path.joinpath('scenariotree')
+        if self.scenariotree: self.write_file(fname, self.scenariotree, format="json")
 
     def save_unit_definitions(self):
         """

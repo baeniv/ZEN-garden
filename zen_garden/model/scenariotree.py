@@ -6,6 +6,8 @@ from anytree import AnyNode, PreOrderIter
 import json
 import os
 import pandas as pd
+from toolz.functoolz import return_none
+
 
 class ScenarioTree:
     """
@@ -15,8 +17,9 @@ class ScenarioTree:
         self.data = None
         self.root = None
         self.node_id_lookup = None
+        self.scenariotree_data = self.get_scenariotree_data(analysis)
 
-        self.json_to_anytree(self.get_scenariotree_data(analysis))
+        self.json_to_anytree(self.scenariotree_data)
         self.leaf_nodes = {node.node_id: node for node in self.root.leaves}
         self.number_of_nodes = len(self.node_id_lookup)
 
@@ -39,7 +42,7 @@ class ScenarioTree:
             node_id=node_data["node_id"],
             year=node_data["year"],
             probability=node_data["probability"],
-            state=node_data["state"],
+            state=node_data.get("state"),
             parent=parent,
             node2root_path=node2root_path
         )
@@ -133,7 +136,73 @@ class ScenarioTree:
                 """
         return len(self.node_id_lookup[node_ID].node2root_path)-1
 
-    def create_scenario_dict(self):
-        scenario = 0
-        scenario_dict = 0
-        return (scenario, scenario_dict)
+    def add_tree2scenario_dict(self, scenario_dict):
+        included_keys = self.extract_scenario_keys()
+        sorted_ids = sorted(self.node_id_lookup.keys())
+
+        for key in included_keys:
+            element, param, mod_type = key
+
+            # Ensure nested dict structure exists
+            if element not in scenario_dict:
+                scenario_dict[element] = {}
+            if param not in scenario_dict[element]:
+                scenario_dict[element][param] = {}
+
+            # Collect values across all nodes
+            values = []
+            for n_id in sorted_ids:
+                val = 1  # Default value
+                node = self.node_id_lookup[n_id]
+                if node.state is None: #For nodes with no state
+                    values.append(str(val))
+                    continue
+                # Look for this specific key in the current node's state
+                for state_item in node.state:
+                    if element in state_item:
+                        found_val = self.get_nested_val(state_item[element], [param, mod_type])
+                        if found_val != 1:
+                            val = found_val
+                            break
+                values.append(str(val))
+
+            # Join values into a comma-separated string
+            scenario_dict[element][param][mod_type] = ",".join(values)
+
+    def extract_scenario_keys(self): #TODO: reduced to node_id_op only
+        scenario_entries = set()
+        for node in self.node_id_lookup.values():
+            if node.state is None: continue
+            for state_item in node.state:
+                for element, params in state_item.items():
+                    for param, inner in params.items():
+                        if isinstance(inner, dict):
+                            for mod_type in inner.keys():
+                                scenario_entries.add((element, param, mod_type))
+        return scenario_entries
+
+    def write_yearly_variation(self, data_input_object, file_name, df_structure, scenariotree_factors):
+        """method that creates a year/temporal node wise output for multi-value per year parameters
+        """
+        yearly_variation = df_structure #TODO: create this
+
+
+        parameter_name = file_name + "_yearly_variation"
+        setattr(data_input_object, parameter_name, yearly_variation)
+        return
+
+    def expand_single_default_value(self):
+        """method that creates a year/temporal node wise output for single value parameters
+        not in use so far
+        """
+        return
+
+    @staticmethod
+    def get_nested_val(data, path):
+        """Helper to navigate nested dicts; returns default 1 if path doesn't exist."""
+        for key in path:
+            if isinstance(data, dict) and key in data:
+                data = data[key]
+            else:
+                return 1
+        return data[0] if isinstance(data, list) else data

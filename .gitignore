@@ -15,6 +15,7 @@ zen_garden_env/
 .coverage
 *runscript.py
 *test.py
+*test2.py
 
 # pytest monitor
 .pymon

@@ -189,9 +189,9 @@ class Scenario():
         else:
             year_index = df.columns
         assert pd.api.types.is_any_real_numeric_dtype(year_index), f"DataFrame columns must be numeric to convert to year, not {year_index.to_list()}."
-        ry = self.system.reference_year
+        ry = 0 #self.system.reference_year
         del_y = self.system.interval_between_years
-        years = [ry + i*del_y for i in year_index]
+        years = [ry + i*del_y for i in year_index] #TODO: adapt this somehow
         if isinstance(df, pd.Series):
             df.index = years
         else:

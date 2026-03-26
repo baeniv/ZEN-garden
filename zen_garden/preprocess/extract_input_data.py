@@ -95,6 +95,25 @@ class DataInput:
         df_output_generic = df_output.copy()
         if time_steps == "set_base_time_steps_yearly":
             self.extract_year_specific_ts(file_name, index_name_list, time_steps, subelement, default_value,df_output_generic=df_output)
+
+        # TODO multiply with temporal_node specific factors (if that works "yearly variation")
+        scenariotree_factors = self.scenario_dict.get_scenariotree_factors(self.element.name, file_name)
+        if scenariotree_factors:
+            scenario_factors = pd.Series(scenariotree_factors, name='year')
+            if time_steps == 'set_base_time_steps_yearly':
+                if hasattr(self, file_name+'yearly_variation'):
+                    yearly_variation = getattr(self, file_name + 'yearly_variation')
+                    setattr(self, file_name + 'yearly_variation', yearly_variation.mul(scenario_factors, level='year'))
+                else:
+                    df_structure, _, _ = self.create_default_output(index_sets, time_steps="set_time_steps_yearly", unit_category=None,
+                                                              file_name=file_name, manual_default_value=1)
+                    df_structure.index.names = [
+                        'year' if name == 'time' else name
+                        for name in df_structure.index.names
+                    ]
+                    setattr(self, file_name+'_yearly_variation', df_structure.mul(scenario_factors, level='year'))
+            elif time_steps == 'set_time_steps_yearly':
+                df_output_generic = df_output_generic.mul(scenario_factors, level='year')
         # finally apply the scenario_factor and return df_output
         return df_output_generic*scenario_factor
 
@@ -110,7 +129,6 @@ class DataInput:
         :return df_output: filled output dataframe """
         df_output_copy = copy.deepcopy(df_output)
         df_input = self.convert_real_to_generic_time_indices(df_input, time_steps, file_name, index_name_list)
-        #TODO multiply with node specific factors
 
         assert df_input.columns is not None, f"Input file '{file_name}' has no columns"
         # set index by index_name_list
@@ -351,13 +369,15 @@ class DataInput:
         :param df_output_generic: original/generic time series data (base case)
         """
         # years of optimization model
-        years = [str(year) for year in range(self.system.reference_year, self.system.reference_year+self.system.optimized_years*self.system.interval_between_years, self.system.interval_between_years)]
+        # TODO: this has to be adapted (or can be used to create a separate method) to use with scenariotree
+        years = self.energy_system.set_time_steps_years
         # files to check
         file_names = os.listdir(self.folder_path)
         for file in file_names:
-            for i,year in enumerate(years):
-                filename = file_name + "_" + year
+            for year in years:
+                filename = file_name + "_" + str(year)
                 if filename in file:
+                    temporal_nodes = [i for i, x in enumerate(self.energy_system.set_temporal_nodes_years) if x == year]
                     # read input data
                     f_name, scenario_factor = self.scenario_dict.get_param_file(self.element.name, filename)
                     df_input = self.read_input_csv(f_name)
@@ -367,11 +387,12 @@ class DataInput:
                             cols = df_input.columns.intersection(index_name_list + [subelement])
                             df_input = df_input[cols]
                         df_output_specific = self.extract_general_input_data(df_input, df_output_generic, file_name, index_name_list, default_value, time_steps)
-                    try:
-                        self.optimization_setup.year_specific_ts[i][(self.element._name,file_name)] = df_output_specific*scenario_factor
-                    except:
-                        self.optimization_setup.year_specific_ts[i] = {}
-                        self.optimization_setup.year_specific_ts[i][(self.element._name,file_name)] = df_output_specific*scenario_factor
+                    for i in temporal_nodes:
+                        try:
+                            self.optimization_setup.year_specific_ts[i][(self.element._name,file_name)] = df_output_specific*scenario_factor
+                        except:
+                            self.optimization_setup.year_specific_ts[i] = {}
+                            self.optimization_setup.year_specific_ts[i][(self.element._name,file_name)] = df_output_specific*scenario_factor
 
 
     def extract_yearly_variation(self, file_name, index_sets):

@@ -806,6 +806,23 @@ class ScenarioDict(dict):
         if not isinstance(default_factor, (int, float)):
             raise ValueError(f"Default factor {default_factor} of type {type(default_factor)} in {op_type} ({element} -> {param} -> {default_f_name}) is not numeric!")
 
+    def get_scenariotree_factors(self, element, param):
+        """
+        Adjusts values in a Pandas Series based on a comma-separated factor string.
+
+        :param element: The element name
+        :param param: The parameter of the element
+        :return: If the entry is overwritten by the scenario analysis the entry and factor are returned, otherwise
+                 the default entry is returned with a factor of 1
+        """
+        scenariotree_factors = None
+        if element in self.dict and param in (element_dict := self.dict[element]):
+            param_dict = element_dict[param]
+            factor_string = param_dict.get("node_id_op")
+            if factor_string: scenariotree_factors = [float(x) for x in factor_string.split(',')]
+
+        return scenariotree_factors
+
 class InputDataChecks:
     """
     This class checks if the input data (folder/file structure, system.py settings, element definitions, etc.) is defined correctly
