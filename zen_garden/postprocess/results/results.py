@@ -286,7 +286,8 @@ class Results:
         series = self.solution_loader.get_component_data(scenario, component, keep_raw, index = index)
 
         if year is None:
-            years = [i for i in range(0, 6)] #scenario.system.optimized_years TODO: fix this
+            nbr_temp_nodes = scenario.scenariotree.number_of_nodes if scenario.scenariotree else scenario.system.optimized_years
+            years = [i for i in range(0, nbr_temp_nodes)] #scenario.system.optimized_years TODO: fix this
         else:
             year = scenario.convert_year2ts(year)
             years = [year]

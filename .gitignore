@@ -16,6 +16,7 @@ zen_garden_env/
 *runscript.py
 *test.py
 *test2.py
+*test3.py
 
 # pytest monitor
 .pymon

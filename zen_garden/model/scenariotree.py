@@ -13,11 +13,11 @@ class ScenarioTree:
     """
     Class defining a scenariotree
     """
-    def __init__(self,analysis):
+    def __init__(self,path):
         self.data = None
         self.root = None
         self.node_id_lookup = None
-        self.scenariotree_data = self.get_scenariotree_data(analysis)
+        self.scenariotree_data = self.get_scenariotree_data(path)
 
         self.json_to_anytree(self.scenariotree_data)
         self.leaf_nodes = {node.node_id: node for node in self.root.leaves}
@@ -59,18 +59,18 @@ class ScenarioTree:
 
         return node
 
-    def get_scenariotree_data(self, analysis):
+    def get_scenariotree_data(self, path):
         """ retrieves the scenariotree data
 
         :param config: config of optimization
         :return: data from scenariotree.json
         """
-        scenariotree_path = os.path.abspath(os.path.join(analysis.dataset, "scenariotree.json"))
+        scenariotree_path = os.path.abspath(os.path.join(path, "scenariotree.json"))
         if os.path.exists(scenariotree_path):
             with open(scenariotree_path, "r") as file:
                 scenariotree_data = json.load(file)
         else:
-            raise FileNotFoundError(f"scenariotree.json not found in dataset: {analysis.dataset}")
+            raise FileNotFoundError(f"scenariotree.json not found in dataset: {path}")
 
         return scenariotree_data
 
@@ -89,11 +89,14 @@ class ScenarioTree:
         """
         Converts and extends the year nodes (e.g., 2025, 2030, 2035) to their
         respective temporal nodes (0, 1, 2, 3, 4, 5) and matches the data.
-
-        :param df_input: Input dataframe with nodes/years/data.
-        :param energy_system: Energy system for timestep data access.
-        :return: Extended and converted dataframe with columns (node, year, 0).
         """
+        has_node = 'node' in df_input.columns
+        df_copy = df_input.copy()
+
+        if not has_node:
+            # Assign a temporary placeholder if nodes aren't specified
+            df_copy['node'] = 'none'
+
         # Create mapping from energy_system lists
         df_mapping = pd.DataFrame({
             'time_step': energy_system.set_time_steps_yearly,
@@ -101,7 +104,7 @@ class ScenarioTree:
         })
 
         # Creating the scaffold for all unique nodes and all time steps
-        nodes = df_input['node'].unique()
+        nodes = df_copy['node'].unique()
         scaffold = pd.MultiIndex.from_product(
             [nodes, df_mapping['time_step']],
             names=['node', 'time_step']
@@ -111,7 +114,7 @@ class ScenarioTree:
         df_extended = (
             scaffold.merge(df_mapping, on='time_step')
             .merge(
-                df_input,
+                df_copy,
                 left_on=['node', 'calendar_year'],
                 right_on=['node', 'year'],
                 how='left'
@@ -124,6 +127,9 @@ class ScenarioTree:
             .sort_values(['node', 'year'])
             .reset_index(drop=True)
         )
+
+        if not has_node:
+            df_final = df_final.drop(columns=['node'])
 
         return df_final
 

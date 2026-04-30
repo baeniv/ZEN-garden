@@ -81,7 +81,7 @@ class OptimizationSetup(object):
         self.scenariotree = None
         self.system.temporal_nodes = self.system.optimized_years
         if self.system.use_scenariotree == True:
-            self.scenariotree = ScenarioTree(self.analysis)
+            self.scenariotree = ScenarioTree(self.analysis.dataset)
             self.system.temporal_nodes = self.scenariotree.number_of_nodes
             self.scenariotree.add_tree2scenario_dict(self.scenario_dict.dict)
 
