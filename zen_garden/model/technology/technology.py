@@ -856,18 +856,32 @@ class TechnologyRules(GenericRule):
         mask_not_transport_not_edge = mask_technology_type & mask_location
         mask_technology_location = mask_transport_edge | mask_not_transport_not_edge
         # create xarray for previous years
-        years = pd.MultiIndex.from_tuples(
-            [(y, py) for y, py in
-             itertools.product(self.sets["set_time_steps_yearly"], self.sets["set_time_steps_yearly"])
-             if py < y],
-            names=["set_time_steps_yearly", "set_time_steps_yearly_prev"]) #TODO: this builds a previous year scaffold, implement tree structure
+        if self.optimization_setup.scenariotree:
+            years = pd.MultiIndex.from_tuples(
+                [(node.node2root_path[0], year, node.node2root_path.index(year))
+                 for node in self.optimization_setup.scenariotree.node_id_lookup.values()
+                 for year in node.node2root_path
+                 if year < node.node2root_path[0]],
+                names=["set_time_steps_yearly", "set_time_steps_yearly_prev", "time_steps"])
+        else:
+            years = pd.MultiIndex.from_tuples(
+                [(y, py) for y, py in
+                 itertools.product(self.sets["set_time_steps_yearly"], self.sets["set_time_steps_yearly"])
+                 if py < y],
+                names=["set_time_steps_yearly", "set_time_steps_yearly_prev"])
         # only formulate term_knowledge if there are previous years
         term_knowledge_no_spillover = capacity_addition.where(False) # dummy term
         term_knowledge = capacity_addition.where(False) # dummy term
         if len(years) != 0:
             # kdr for capacity additions
-            kdr = {(y, py): (1 - knowledge_depreciation_rate) ** (interval_between_years * (y - 1 - py)) #TODO: y - previous year (use actual years instead of generic)
-                   for y, py in years}
+            if self.optimization_setup.scenariotree:
+                kdr = {(y, py): (1 - knowledge_depreciation_rate) ** (interval_between_years * (steps - 1))
+                       for y, py, steps in years}
+                timestep_mapping = years.to_frame(index=False)  # TODO: drop if not used
+                years = years.droplevel("time_steps")
+            else:
+                kdr = {(y, py): (1 - knowledge_depreciation_rate) ** (interval_between_years * (y - 1 - py))
+                       for y, py in years}
             kdr = pd.Series(kdr)
             kdr.index.names = ["set_time_steps_yearly", "set_time_steps_yearly_prev"]
             kdr = kdr.to_xarray().fillna(0)
@@ -905,7 +919,17 @@ class TechnologyRules(GenericRule):
         mask_market_share_unbounded = market_share_unbounded != 0
         term_unbounded_addition = (market_share_unbounded * capacity_previous.rename({"set_technologies":"set_other_technologies"})).where(mask_market_share_unbounded).sum("set_other_technologies")
         # existing capacities
-        delta_years = interval_between_years * (capacity_addition.coords["set_time_steps_yearly"] - 1 - self.energy_system.set_time_steps_yearly[0])
+        if self.optimization_setup.scenariotree:
+            node2root_distance = {node.node2root_path[0]: (len(node.node2root_path)-2) for node in
+                             self.optimization_setup.scenariotree.node_id_lookup.values()}
+            delta_years = xr.DataArray(
+                [interval_between_years * (node2root_distance[y]) for y in
+                 capacity_addition.coords["set_time_steps_yearly"].values],
+                coords={"set_time_steps_yearly": capacity_addition.coords["set_time_steps_yearly"]},
+                dims=["set_time_steps_yearly"]
+            )
+        else:
+            delta_years = interval_between_years * (capacity_addition.coords["set_time_steps_yearly"] - 1 - self.energy_system.set_time_steps_yearly[0])
         lifetime_existing = self.parameters.lifetime_existing
         lifetime = self.parameters.lifetime
         kdr_existing = (1 - knowledge_depreciation_rate) ** (delta_years + lifetime - lifetime_existing)

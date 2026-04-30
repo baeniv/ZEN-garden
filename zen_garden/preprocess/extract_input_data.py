@@ -809,7 +809,7 @@ class DataInput:
 
             # convert yearly time indices to generic ones
             if self.system.use_scenariotree:
-                df_input = self.optimization_setup.scenariotree.convert_yearly2generic(df_input, self.energy_system)
+                df_input = self.energy_system.optimization_setup.scenariotree.convert_yearly2generic(df_input, self.energy_system)
             else:
                 year2step = {year: step for year, step in zip(self.energy_system.set_time_steps_years, getattr(self.energy_system, time_steps))}
                 df_input[temporal_header] = df_input[temporal_header].apply(lambda year: year2step[year])

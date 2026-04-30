@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import pandas as pd
 
-path = Path(r"C:\Users\Public\ZenGarden\Crystal_Ball_6_Years_Reduced_Tech\data\Crystal_Ball\set_technologies\set_conversion_technologies\set_retrofitting_technologies")
+path = Path(r"C:\Users\Public\ZenGarden\Crystal_Ball_6_Years\data\Crystal_Ball\set_technologies\set_conversion_technologies")
 
 # Get a list of only directories
 folders = [f.name for f in path.iterdir() if f.is_dir()]
@@ -30,6 +30,7 @@ removed_carriers = ["ammonia",
                     "waste",
                     "wet_biomass"
                     ]
+removed_carriers = ['electricity']
 Remaining_Tech_Dict = {}
 Removed_Tech_Dict = {}
 
@@ -42,8 +43,9 @@ for technology in folders:
             input = attributes.get("input_carrier",{}).get("default_value",[])
             output = attributes.get("output_carrier", {}).get("default_value", [])
             reference = attributes.get("reference_carrier", {}).get("default_value", [])
+            carriers = input #TODO set correct group
 
-            if not any(item in removed_carriers for item in input + output + reference):
+            if not any(item in removed_carriers for item in carriers):
                 Remaining_Tech_Dict[technology] = {
                     "input_carrier": {str(input)},
                     "output_carrier": {str(output)},
