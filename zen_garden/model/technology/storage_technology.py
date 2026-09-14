@@ -50,6 +50,7 @@ class StorageTechnology(Technology):
         self.capacity_addition_max_energy = self.data_input.extract_input_data("capacity_addition_max_energy", index_sets=[], unit_category={"energy_quantity": 1})
         self.capacity_limit_energy = self.data_input.extract_input_data("capacity_limit_energy", index_sets=["set_nodes", "set_time_steps_yearly"], time_steps="set_time_steps_yearly", unit_category={"energy_quantity": 1})
         self.capacity_existing_energy = self.data_input.extract_input_data("capacity_existing_energy", index_sets=["set_nodes", "set_technologies_existing"], unit_category={"energy_quantity": 1})
+        self.capacity_investment_fixed_energy = self.data_input.extract_input_data("capacity_investment_fixed_energy", index_sets=["set_nodes", "set_time_steps_yearly"], time_steps="set_time_steps_yearly", unit_category={"energy_quantity": 1})
         self.capacity_investment_existing_energy = self.data_input.extract_input_data("capacity_investment_existing_energy", index_sets=["set_nodes", "set_time_steps_yearly"], time_steps="set_time_steps_yearly", unit_category={"energy_quantity": 1})
         self.energy_to_power_ratio_min = self.data_input.extract_input_data("energy_to_power_ratio_min", index_sets=[], unit_category={"time": 1})
         self.energy_to_power_ratio_max = self.data_input.extract_input_data("energy_to_power_ratio_max", index_sets=[],
@@ -113,6 +114,8 @@ class StorageTechnology(Technology):
         optimization_setup.parameters.add_parameter(name="self_discharge", index_names=["set_storage_technologies", "set_nodes"], doc='self discharge of storage technologies', calling_class=cls)
         # capex specific
         optimization_setup.parameters.add_parameter(name="capex_specific_storage", index_names=["set_storage_technologies", "set_capacity_types", "set_nodes", "set_time_steps_yearly"], capacity_types=True, doc='specific capex of storage technologies', calling_class=cls)
+        # fixed investments for operation only
+        optimization_setup.parameters.add_parameter(name="capacity_investment_fixed_energy", index_names=["set_storage_technologies", "set_nodes", "set_time_steps_yearly"], set_time_steps="set_time_steps_yearly", doc="Parameter which specifies energy capacities for fixed capacity runs (storage)", calling_class=cls)
 
     @classmethod
     def construct_vars(cls, optimization_setup):
