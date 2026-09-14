@@ -791,7 +791,7 @@ class DataInput:
             file_names_int_off = []
             if self.energy_system.parameters_interpolation_off is not None:
                 file_names_int_off = self.energy_system.parameters_interpolation_off['parameter_name']
-            if file_name not in file_names_int_off:
+            if not (file_name in file_names_int_off or file_name in {'capacity_investment_fixed_energy', 'capacity_investment_fixed'}): #never interpolate these two
                 parameters = df_input.axes[1]
                 for param in parameters:
                     if param not in index_names_column and df_input[param].isna().any():
@@ -806,7 +806,6 @@ class DataInput:
             df_input = df_input.reset_index()
             # remove data of years that won't be simulated
             df_input = df_input[df_input[temporal_header].isin(self.energy_system.set_time_steps_years)]
-
             # convert yearly time indices to generic ones
             if self.system.use_scenariotree:
                 df_input = self.energy_system.optimization_setup.scenariotree.convert_yearly2generic(df_input, self.energy_system)

@@ -69,6 +69,7 @@ class Technology(Element):
         self.capacity_existing = self.data_input.extract_input_data("capacity_existing", index_sets=[set_location, "set_technologies_existing"], unit_category={"energy_quantity": 1, "time": -1})
         self.capacity_investment_existing = self.data_input.extract_input_data("capacity_investment_existing", index_sets=[set_location, "set_time_steps_yearly"], time_steps="set_time_steps_yearly", unit_category={"energy_quantity": 1, "time": -1})
         self.lifetime_existing = self.data_input.extract_lifetime_existing("capacity_existing", index_sets=[set_location, "set_technologies_existing"])
+        self.capacity_investment_fixed = self.data_input.extract_input_data("capacity_investment_fixed", index_sets=[set_location, "set_time_steps_yearly"], time_steps="set_time_steps_yearly", unit_category={"energy_quantity": 1, "time": -1})
 
     def calculate_capex_of_capacities_existing(self, storage_energy=False):
         """ this method calculates the annualized capex of the existing capacities
@@ -368,6 +369,8 @@ class Technology(Element):
                                                     doc="Parameter which specifies the total available capacity of existing technologies at the beginning of the optimization", calling_class=cls)
         optimization_setup.parameters.add_parameter(name="existing_capex", data=cls.get_existing_quantity(optimization_setup,type_existing_quantity="cost_capex_overnight"),
                                                     doc="Parameter which specifies the total capex of existing technologies at the beginning of the optimization", calling_class=cls)
+        # fixed_capacity_investment (fixed capacity addition)
+        optimization_setup.parameters.add_parameter(name="capacity_investment_fixed", index_names=["set_technologies", "set_location", "set_time_steps_yearly"], set_time_steps="set_time_steps_yearly", doc="Parameter which specifies capacities for fixed capacity runs", calling_class=cls)
 
         # add pe.Param of the child classes
         for subclass in cls.__subclasses__():
@@ -491,22 +494,24 @@ class Technology(Element):
         # construct pe.Constraints of the class <Technology>
         rules = TechnologyRules(optimization_setup)
         #  technology capacity_limit
-        rules.constraint_technology_capacity_limit()
+        if optimization_setup.system.allow_investment: rules.constraint_technology_capacity_limit()
 
         # minimum capacity
-        rules.constraint_technology_min_capacity_addition()
+        if optimization_setup.system.allow_investment: rules.constraint_technology_min_capacity_addition()
 
         # maximum capacity
-        rules.constraint_technology_max_capacity_addition()
+        if optimization_setup.system.allow_investment: rules.constraint_technology_max_capacity_addition()
 
         # construction period
         rules.constraint_technology_construction_time()
+
+        if not optimization_setup.system.allow_investment: rules.constraint_fixed_investments()
 
         # lifetime
         rules.constraint_technology_lifetime()
 
         # limit diffusion rate
-        rules.constraint_technology_diffusion_limit()
+        if optimization_setup.system.allow_investment: rules.constraint_technology_diffusion_limit()
 
         # annual capex of having capacity
         rules.constraint_cost_capex_yearly()
@@ -663,8 +668,6 @@ class TechnologyRules(GenericRule):
         constraints_not_reached = lhs_not_reached <= rhs_not_reached
         lhs_reached = self.variables["capacity_addition"].where(m).where(~capacity_limit_not_reached)
         rhs_reached = 0
-        if not self.system.allow_investment:
-            lhs_reached = self.variables["capacity_addition"]
         constraints_reached = lhs_reached == rhs_reached
 
         self.constraints.add_constraint("constraint_technology_capacity_limit_not_reached",constraints_not_reached)
@@ -769,6 +772,25 @@ class TechnologyRules(GenericRule):
 
         self.constraints.add_constraint("constraint_technology_construction_time",constraints)
         self.constraints.add_constraint("constraint_technology_construction_time_outside",constraints_outside)
+
+    def constraint_fixed_investments(self):
+        if self.optimization_setup.system.allow_investment:
+            raise ValueError("constraint_fixed_investments should only be called when allow_investment is False.")
+
+        # Power side: applies to all technologies
+        lhs_power = self.variables["capacity_investment"].sel(set_capacity_types="power")
+        rhs_power = self.parameters.capacity_investment_fixed
+        self.constraints.add_constraint("constraint_fixed_investments_power", lhs_power == rhs_power)
+
+        # Energy side: only applies to storage technologies
+        storage_techs = self.sets["set_storage_technologies"]
+        lhs_energy = self.variables["capacity_investment"].sel(
+            set_capacity_types="energy", set_technologies=storage_techs
+        )
+        rhs_energy = self.parameters.capacity_investment_fixed_energy.rename(
+            {"set_storage_technologies": "set_technologies", "set_nodes": "set_location"}
+        )
+        self.constraints.add_constraint("constraint_fixed_investments_energy", lhs_energy == rhs_energy)
 
     def constraint_technology_lifetime(self):
         """ limited lifetime of the technologies. calculates 'capacity', i.e., the capacity at the end of the year and
@@ -1000,7 +1022,7 @@ class TechnologyRules(GenericRule):
 
         lt_range = pd.MultiIndex.from_tuples([(t, y, py) for t, y in
                                               index.get_unique(["set_technologies", "set_time_steps_yearly"]) for py in
-                                              list(Technology.get_lifetime_range(self.optimization_setup, t, y, use_depreciation_time=True))])
+                                              Technology.get_lifetime_range(self.optimization_setup, t, y, use_depreciation_time=True)])
 
         lt_range = pd.Series(index=lt_range, data=-1)
         lt_range.index.names = ["set_technologies", "set_time_steps_yearly", "set_time_steps_yearly_prev"]

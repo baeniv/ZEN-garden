@@ -473,14 +473,13 @@ class EnergySystemRules(GenericRule):
         for year in self.energy_system.set_time_steps_yearly:
 
             ### auxiliary calculations
-            if self.energy_system.set_temporal_nodes_years[year] == self.energy_system.set_temporal_nodes_years[-1]:
+            if self.energy_system.set_temporal_nodes_years[year] == self.energy_system.set_time_steps_years[-1]: #this used to check if it's the last year of the entire time horizon (myopic foresight)
                 interval_between_years = 1
             else:
                 interval_between_years = self.system.interval_between_years
             # economic discount
             factor[year] = sum(((1 / (1 + self.parameters.discount_rate))
-                                ** (self.system.interval_between_years
-                                    * (self.energy_system.set_temporal_nodes_years[year] - self.energy_system.set_temporal_nodes_years[0])
+                                ** ((self.energy_system.set_temporal_nodes_years[year] - self.energy_system.set_temporal_nodes_years[0])
                                     + _intermediate_time_step))
                                     for _intermediate_time_step in range(0, interval_between_years))
         term_discounted_cost_total = self.variables["cost_total"] * factor
@@ -591,7 +590,7 @@ class EnergySystemRules(GenericRule):
         :math:`C_y`: total cost of energy system in year :math:`y` \n
         :math:`CAPEX_y`: annual capital expenditures in year :math:`y` \n
         :math:`OPEX_y^\\mathrm{t}`: annual operational expenditures for operating technologies in year :math:`y` \n
-        :math:`OPEX_y^\\mathrm{c}`: annual operational expenditures for for importing and exporting carriers in year :math:`y` \n
+        :math:`OPEX_y^\\mathrm{c}`: annual operational expenditures for importing and exporting carriers in year :math:`y` \n
         :math:`OPEX_y^\\mathrm{e}`: annual operational expenditures for carbon emissions in year :math:`y`
 
         """

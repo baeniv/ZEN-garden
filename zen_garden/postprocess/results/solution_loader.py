@@ -139,7 +139,7 @@ class Scenario():
         self._ureg = self._read_ureg(default_ureg)
         self._components: dict[str, Component] = self._read_components()
         self.scenariotree = None
-        if self.system.use_scenariotree: self.scenariotree: ScenarioTree = ScenarioTree(path) #TODO temporary line of code to load scenariotree
+        if self.system.use_scenariotree: self.scenariotree: ScenarioTree = ScenarioTree(path)
 
     def _read_analysis(self) -> Analysis:
         analysis_path = os.path.join(self.path, "analysis.json")
@@ -195,7 +195,6 @@ class Scenario():
         ry = self.system.reference_year
         del_y = self.system.interval_between_years
         years = [ry + i*del_y for i in year_index]#TODO: adapt this somehow
-        test = [self.scenariotree.node_id_lookup[i] for i in year_index] #TODO: remove
         if self.system.use_scenariotree: years = [str(self.scenariotree.node_id_lookup[i].year)+" ("+str(i)+")" for i in year_index]
         if isinstance(df, pd.Series):
             df.index = years

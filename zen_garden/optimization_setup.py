@@ -38,7 +38,7 @@ class OptimizationSetup(object):
     # dict of element classes, this dict is filled in the __init__ of the package
     dict_element_classes = {}
 
-    def     __init__(self, config, scenario_dict: dict, input_data_checks):
+    def __init__(self, config, scenario_dict: dict, input_data_checks):
         """setup optimization setup of the energy system
 
         :param config: config object used to extract the analysis, system and solver dictionaries
@@ -821,7 +821,7 @@ class OptimizationSetup(object):
 
         if phase == 'investment':
             logging.info(f"---- Optimizing investment ----")
-            self.system.allow_investment = True
+            self.system.allow_investment = False #TODO: change to False for isolated operation only phase
             self.operation_only_phase = False
 
         elif phase == 'operation':
